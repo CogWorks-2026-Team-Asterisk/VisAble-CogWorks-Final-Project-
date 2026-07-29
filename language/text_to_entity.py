@@ -166,24 +166,3 @@ def text_to_entity(description):
 
     return {"raw_description": description, "entities": entities, "relationships": relationships}
 
-
-# Testing
-
-# if __name__ == "__main__":
-#     description = """
-#     This is a bar chart comparing household income.
-#     The green bar represents Germany.
-#     Germany has a value of 98.3.
-#     The blue bar represents Australia.
-#     Australia has a value of 81.3.
-#     """
-
-#     result = text_to_entity(description)
-
-#     print("ENTITIES")
-#     for entity in result["entities"]:
-#         print(entity)
-
-#     print("\nRELATIONSHIPS")
-#     for relationship in result["relationships"]:
-#         print(relationship)
