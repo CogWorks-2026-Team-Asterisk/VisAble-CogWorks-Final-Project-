@@ -1,20 +1,9 @@
 import os
-import sys
 import torch
 import torch.nn as nn
 from torch.utils.data import Dataset, DataLoader, random_split
 from transformers import BlipForConditionalGeneration, BlipProcessor, AdamW
 from PIL import Image
-import json
-
-PROJECT_ROOT = os.path.abspath(
-    os.path.join(os.path.dirname(__file__), "..")
-)
-
-DATA_DIRECTORY = os.path.join(PROJECT_ROOT, "data")
-
-if DATA_DIRECTORY not in sys.path:
-    sys.path.append(DATA_DIRECTORY)
 
 from ai2d_dataset import AI2DDataset
 
