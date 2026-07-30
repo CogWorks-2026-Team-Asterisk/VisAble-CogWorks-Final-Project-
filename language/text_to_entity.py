@@ -1,8 +1,45 @@
 import spacy
 from spacy.tokens import Token
+import re
+from spacy.symbols import ORTH
 
 nlp = spacy.load("en_core_web_sm")
+
+LIKE_LABELS = {
+    "scale-like",
+    "awl-like",
+    "needle-like",
+}
+
+
+for label in LIKE_LABELS:
+    nlp.tokenizer.add_special_case(label, [{ORTH: label}])
     
+IGNORE_ENTITIES = {
+    "this",
+    "that",
+    "which",
+    "it",
+    "they",
+    "them",
+    "their",
+    "each",
+    "one",
+    "image",
+    "picture",
+    "figure",
+    "example",
+    "title",
+    "label",
+    "right",
+    "left",
+    "difference",
+    "differences",
+    "overall appearance",
+    "arrangement",
+    "like",
+}
+
 
 RELATION_MAP = {
     "illustrate": "illustrates",
@@ -14,9 +51,8 @@ RELATION_MAP = {
     "contain": "contains",
     "include": "includes",
     "consist": "consists_of",
-    "compose": "composed_of",
+    "compose": "forms",
     "form": "forms",
-    "have": "has",
     "cause": "causes",
     "lead": "leads_to",
     "result": "results_in",
@@ -25,19 +61,70 @@ RELATION_MAP = {
     "decrease": "decreases",
     "surround": "surrounds",
     "cover": "covers",
-    "attach": "attached_to",
-    "connect": "connected_to",
+    "attach": "attaches_to",
+    "connect": "connects_to",
     "locate": "located_in",
     "label": "labeled_as",
     "indicate": "indicates",
     "mark": "marks",
     "produce": "produces",
-    
+    "carry": "carries",
+    "branch": "branches_into",
+    "divide": "divides_into",
+    "spread": "spreads_from",
+    "radiate": "radiates_from",
+    "extend": "extends_from",
+    "flow": "flows_to",
+    "move": "moves_to",
+    "point": "points_to",
+    "distinguish": "distinguishes",
+}
+
+
+PASSIVE_RELATION_MAP = {
+    "compose": "composed_of",
+    "form": "formed_by",
+    "attach": "attached_to",
+    "connect": "connected_to",
+    "locate": "located_in",
+    "label": "labeled_as",
+    "surround": "surrounded_by",
+    "cover": "covered_by",
+}
+
+
+VALUE_SCALES = {
+    "hundred",
+    "thousand",
+    "million",
+    "billion",
+    "trillion",
+}
+
+
+COMPARISON_MAP = {
+    "larger": "greater_than",
+    "greater": "greater_than",
+    "higher": "greater_than",
+    "longer": "greater_than",
+    "more": "greater_than",
+    "smaller": "less_than",
+    "lower": "less_than",
+    "shorter": "less_than",
+    "fewer": "less_than",
+    "less": "less_than",
 }
 
 
 def clean(text):
-    text = text.lower().strip(" ,.;:\"')(")
+    text = text.lower().strip()
+    text = re.sub(r"\s+", " ", text)
+    text = text.strip(" ,.:;!?\"'()[]{}")
+    
+    text = re.sub(r"^(first|second|third|fourth|fifth),?\s+", "", text)
+
+    text = re.sub(r"^(its|their|his|her)\s+", "", text)
+
     
     words = text.split()
     
@@ -49,7 +136,9 @@ def clean(text):
     return cleaned_text
 
 def make_id(text):
-    return clean(text).replace(" ", "_")
+    text = clean(text)
+    text = re.sub(r"[^a-z0-9]+", "_", text)
+    return text.strip("_")
 
 def get_noun_phrase(token: Token) -> str:
 
@@ -59,28 +148,33 @@ def get_noun_phrase(token: Token) -> str:
 
     return clean(token.text)
 
+def is_valid_entity(chunk):
+    name = clean(chunk.text)
+
+    if not name or name in IGNORE_ENTITIES:
+        return False
+
+    if chunk.root.pos_ in {"PRON", "DET", "AUX", "VERB"}:
+        return False
+
+    if all(token.like_num or token.is_punct for token in chunk):
+        return False
+
+    return True
+
+
 def extract_entities(doc):
-
-    entities: list[dict[str, str]] = []
-    seen: set[str] = set()
-
-    IGNORE_ENTITIES = {"this", "value", "this image", "image", "diagram", "figure", "total"}
+    entities = []
+    seen = set()
 
     for chunk in doc.noun_chunks:
+        if not is_valid_entity(chunk):
+            continue
+
         name = clean(chunk.text)
-
-        if not name:
-            continue
-        
-        if name in IGNORE_ENTITIES:
-            continue
-
-        if chunk[0].like_num:
-            continue
-
         entity_id = make_id(name)
 
-        if entity_id in seen:
+        if not entity_id or entity_id in seen:
             continue
 
         seen.add(entity_id)
@@ -89,94 +183,277 @@ def extract_entities(doc):
 
     return entities
 
+def resolve_subject(token):
+    if token.lower_ in {"that", "which"}:
+        verb = token.head
+
+        if verb.dep_ == "relcl":
+            return verb.head
+
+        return None
+
+    if token.lower_ == "each":
+        verb = token.head
+
+        if verb.dep_ == "relcl":
+            return verb.head
+
+        return None
+
+    if token.lower_ in IGNORE_ENTITIES:
+        return None
+
+    return token
+
+
+def expand_conjunctions(token):
+    return [token] + list(token.conjuncts)
+
+
+def get_relation(verb):
+    is_passive = any(child.dep_ in {"auxpass", "nsubjpass"} for child in verb.children)
+
+    if is_passive:
+        return PASSIVE_RELATION_MAP.get(verb.lemma_, RELATION_MAP.get(verb.lemma_, verb.lemma_))
+
+    return RELATION_MAP.get(verb.lemma_, verb.lemma_)
+
+
+def get_objects(verb):
+    objects = [child for child in verb.children if child.dep_ in {"dobj", "obj", "attr", "oprd", "dative"}]
+
+    for child in verb.children:
+        if child.dep_ != "prep":
+            continue
+
+        for grandchild in child.children:
+            if grandchild.dep_ == "pobj":
+                objects.append(grandchild)
+
+    return objects
+
 
 def extract_verb_relationships(doc):
     relationships = []
 
     for token in doc:
-        if token.pos_ != "VERB":
+        if token.pos_ not in {"VERB", "AUX"}:
             continue
 
         subjects = [child for child in token.children if child.dep_ in {"nsubj", "nsubjpass"}]
 
-        objects = [child for child in token.children if child.dep_ in {"dobj", "obj", "attr", "oprd"}]
+        objects = get_objects(token)
 
         if not subjects or not objects:
             continue
 
-        source = get_noun_phrase(subjects[0])
-        target = get_noun_phrase(objects[0])
-        
-        if token.lemma_ == "have" and clean(target) == "value":
-            continue
+        relation = get_relation(token)
 
-        relation = RELATION_MAP.get(token.lemma_, token.lemma_)
+        for subject in subjects:
+            for expanded_subject in expand_conjunctions(subject):
+                resolved_subject = resolve_subject(expanded_subject)
 
-        relationships.append({"source": make_id(source), "relation": relation, "target": make_id(target)})
+                if resolved_subject is None:
+                    continue
+
+                source = get_noun_phrase(resolved_subject)
+
+                if not source or source in IGNORE_ENTITIES:
+                    continue
+
+                for obj in objects:
+                    for expanded_object in expand_conjunctions(obj):
+                        target = get_noun_phrase(expanded_object)
+
+                        if not target or target in IGNORE_ENTITIES:
+                            continue
+
+                        if make_id(source) == make_id(target):
+                            continue
+
+                        if token.lemma_ == "have" and any(
+                            item.like_num
+                            for item in expanded_object.subtree
+                        ):
+                            continue
+
+                        relationships.append({
+                            "source": make_id(source),
+                            "relation": relation,
+                            "target": make_id(target),
+                        })
 
     return relationships
 
+def extract_is_relationships(doc):
+    relationships = []
+
+    for predicate in doc:
+        linking_word = [child for child in predicate.children if child.dep_ == "cop"]
+
+        subjects = [child for child in predicate.children if child.dep_ in {"nsubj", "nsubjpass"}]
+
+        if not linking_word or not subjects:
+            continue
+
+        target = get_noun_phrase(predicate)
+
+        for subject in subjects:
+            source = get_noun_phrase(subject)
+
+            if (not source or not target or source in IGNORE_ENTITIES or target in IGNORE_ENTITIES):
+                continue
+
+            relationships.append({"source": make_id(source), "relation": "identified_as", "target": make_id(target)})
+
+    return relationships
+
+def convert_number(text):
+    text = text.replace(",", "").replace("%", "")
+    try:
+        value = float(text)
+    except ValueError:
+        return None
+
+    if value.is_integer():
+        return int(value)
+
+    return value
+
+
+def find_subject_in_sentence(token):
+    for item in token.sent:
+        if item.dep_ in {"nsubj", "nsubjpass"}:
+            subject = resolve_subject(item)
+
+            if subject is not None:
+                return get_noun_phrase(subject)
+
+    return None
+
+
+def extract_scale_and_unit(token):
+    scale = None
+    unit_words = []
+
+    following_tokens = token.doc[token.i + 1:token.sent.end]
+
+    for following in following_tokens:
+        word = clean(following.text)
+
+        if not word:
+            continue
+
+        if scale is None and word in VALUE_SCALES:
+            scale = word
+            continue
+
+        if following.pos_ in {"NOUN", "PROPN", "ADJ"}:
+            unit_words.append(word)
+        else:
+            break
+
+    return scale, " ".join(unit_words) or None
 
 def extract_values(doc):
-    
-    VALUE_UNITS = {
-        "hundred",
-        "thousand",
-        "million",
-        "billion",
-        "trillion",
-        "percent",
-    }
-    
     relationships = []
 
     for token in doc:
         if not token.like_num:
             continue
 
-        value_text = token.text.replace(",", "")
+        value = convert_number(token.text)
 
-        try:
-            value = float(value_text)
-        except ValueError:
-            continue
-    
-        if value.is_integer():
-            value = int(value)
-
-        sentence = token.sent
-
-        subjects = [item for item in sentence if item.dep_ in {"nsubj", "nsubjpass"}]
-
-        if not subjects:
+        if value is None:
             continue
 
-        source = get_noun_phrase(subjects[0])
+        source = find_subject_in_sentence(token)
 
-        unit_words = []
+        if not source or source in IGNORE_ENTITIES:
+            continue
 
-        next_token = token.nbor(1) if token.i + 1 < len(doc) else None
+        scale, unit = extract_scale_and_unit(token)
 
-        if next_token and next_token.lower_ in VALUE_UNITS:
-            unit_words.append(next_token.lower_)
-
-            for following in doc[next_token.i + 1 : sentence.end]:
-                if following.pos_ in {"NOUN", "PROPN", "ADJ"}:
-                    unit_words.append(following.text.lower())
-                else:
-                    break
-        
-        relationships.append({"source": make_id(source), "relation": "has_value", "target": value, "unit": " ".join(unit_words) or None})
+        relationships.append({"source": make_id(source), "relation": "has_value", "target": value, "scale": scale, "unit": unit})
 
     return relationships
 
+def extract_comparisons(doc):
+    relationships = []
+
+    for token in doc:
+        word = token.lower_
+
+        if word not in COMPARISON_MAP:
+            continue
+
+        relation = COMPARISON_MAP[word]
+
+        source = None
+        target = None
+
+        for child in token.children:
+            if child.dep_ in {"nsubj", "nsubjpass"}:
+                source = get_noun_phrase(child)
+
+            if child.dep_ == "prep":
+                for grandchild in child.children:
+                    if grandchild.dep_ == "pobj":
+                        target = get_noun_phrase(grandchild)
+
+        if source and target:
+            relationships.append({"source": make_id(source), "relation": relation, "target": make_id(target)})
+
+    return relationships
+
+def extract_example_relationships(doc):
+    relationships = []
+
+    valid_labels = {
+        "scale-like",
+        "awl-like",
+        "linear",
+        "needle-like",
+    }
+
+    for sentence in doc.sents:
+        label = None
+
+        for word in sentence:
+            name = clean(word.text)
+
+            if name in valid_labels:
+                label = name
+                break
+
+        if label is None:
+            continue
+
+        for verb in sentence:
+            if verb.lemma_ not in {"have", "show", "display", "consist"}:
+                continue
+
+            objects = get_objects(verb)
+
+            for obj in objects:
+                for expanded_object in expand_conjunctions(obj):
+                    target = get_noun_phrase(expanded_object)
+
+                    if not target or target in IGNORE_ENTITIES:
+                        continue
+
+                    relation = get_relation(verb)
+
+                    relationships.append({"source": make_id(label), "relation": relation, "target": make_id(target)})
+
+    return relationships
 
 def remove_duplicates(relationships):
     unique_relationships = []
     seen = set()
 
     for relationship in relationships:
-        key = (relationship["source"], relationship["relation"], relationship["target"])
+        key = (relationship.get("source"), relationship.get("relation"), relationship.get("target"), relationship.get("scale"), relationship.get("unit"))
 
         if key in seen:
             continue
@@ -186,38 +463,82 @@ def remove_duplicates(relationships):
 
     return unique_relationships
 
+def add_missing_entities(entities, relationships):
+    seen = {entity["id"] for entity in entities}
+
+    for relationship in relationships:
+        possible_ids = [relationship["source"]]
+
+        if isinstance(relationship["target"], str):
+            possible_ids.append(relationship["target"])
+
+        for entity_id in possible_ids:
+            if not entity_id or entity_id in seen:
+                continue
+
+            entities.append({"id": entity_id, "name": entity_id.replace("_", " ")})
+
+            seen.add(entity_id)
+
+    return entities
+
+def extract_hyphenated_labels(doc):
+    entities = []
+
+    for word in doc:
+        name = clean(word.text)
+
+        if name in LIKE_LABELS:
+            entities.append({"id": make_id(name), "name": name})
+
+    return entities
+
+def remove_duplicate_entities(entities):
+    unique_entities = []
+    seen = set()
+
+    for entity in entities:
+        if entity["id"] in seen:
+            continue
+
+        seen.add(entity["id"])
+        unique_entities.append(entity)
+
+    return unique_entities
 
 def text_to_entity(description):
     description = description.strip()
 
+    if not description:
+        return {"raw_description": "", "entities": [], "relationships": [],}
+
     doc = nlp(description)
 
     entities = extract_entities(doc)
+    entities.extend(extract_hyphenated_labels(doc))
+    entities = remove_duplicate_entities(entities)
 
     relationships = []
     relationships.extend(extract_verb_relationships(doc))
+    relationships.extend(extract_is_relationships(doc))
+    relationships.extend(extract_example_relationships(doc))
     relationships.extend(extract_values(doc))
+    relationships.extend(extract_comparisons(doc))
 
     relationships = remove_duplicates(relationships)
+    entities = add_missing_entities(entities, relationships)
 
-    return {"raw_description": description, "entities": entities, "relationships": relationships}
+    return {"raw_description": description, "entities": entities, "relationships": relationships,}
 
 # testing
 
-# if __name__ == "__main__": 
-#     description = """ This image is a horizontal bar chart comparing the number of plastic particles floating on the ocean surface across different ocean basins in 2013. 
-#     The chart compares the Global Ocean (total), the North Pacific, the Indian Ocean, the North Atlantic, the South Pacific, the South Atlantic, and the Mediterranean Sea. 
-#     The Global Ocean (total) has 5.25 trillion plastic particles. The North Pacific has 1.98 trillion plastic particles. 
-#     The Indian Ocean has 1.3 trillion plastic particles. The North Atlantic has 931 billion plastic particles. 
-#     The South Pacific has 490 billion plastic particles. The South Atlantic has 297.5 billion plastic particles. 
-#     The Mediterranean Sea has 247.4 billion plastic particles. 
-#     The Global Ocean (total) has the highest number of plastic particles, while the Mediterranean Sea has the lowest number among the regions shown. 
-#     Longer bars represent larger numbers of plastic particles.
-#     """ 
-#     result = text_to_entity(description) 
-#     print("ENTITIES") 
-#     for entity in result["entities"]: 
-#         print(entity) 
-#     print("\nRELATIONSHIPS") 
-#     for relationship in result["relationships"]: 
-#         print(relationship)
+if __name__ == "__main__": 
+    description = """ The image is a labeled diagram of a human face that identifies its main visible parts. At the center is a large oval face with light skin, covered at the top by red hair that is parted in the middle and falls to both sides. Below the hair are two large round eyes with black pupils and curved eyebrows, a small nose centered beneath the eyes, and a wide curved mouth that forms a smile. Small ears appear on both sides of the head, partially covered by the hair. White label boxes surround the illustration, with thin lines pointing to each feature: HAIR points to the red hair, EYES points to the eyes, NOSE points to the nose, MOUTH points to the smiling mouth, EARS points to the ears, and FACE labels the entire head. The diagram shows how these individual facial features are arranged together to form a complete human face.
+    """ 
+    result = text_to_entity(description) 
+    print("ENTITIES") 
+    for entity in result["entities"]: 
+        print(entity) 
+    print("\nRELATIONSHIPS") 
+    for relationship in result["relationships"]: 
+        print(relationship)
