@@ -76,6 +76,9 @@ class AI2DDataset(Dataset):
             image = self.transform(image)
 
         return image
+    
+    def get_image_path(self, index):
+        return self.download_image(index)
 
     def get_caption(self, index):
         record = self.get_record(index)
