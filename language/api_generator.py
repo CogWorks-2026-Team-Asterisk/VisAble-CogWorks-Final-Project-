@@ -8,15 +8,15 @@ from data.ai2d_dataset import AI2DDataset
 client = OpenAI(api_key=os.environ["OPENAI_API_KEY"])
 
 def flatten_entity_relationship(er_dict):
-    entities_str = ", ".join(er_dict["entities"])
+    entities_str = ", ".join(e["name"] for e in er_dict["entities"])
     relations_str = ", ".join(
         f"{r['source']} {r['relation']} {r['target']}"
-        for r in er_dict["relations"]
+        for r in er_dict["relationships"]
     )
     return f"Entities: [{entities_str}] Relations: [{relations_str}]"
 
 
-def entity_to_ptw(dataset: AI2DDataset, prompt_message="""Convert the following entity-relationship data into a paragraph that explains the object or concept from its individual parts to the complete whole. Your audience is a blind or low-vision student who may not have seen the object or diagram before.
+def entity_to_ptw(dataset: AI2DDataset, limit = None,  prompt_message="""Convert the following entity-relationship data into a paragraph that explains the object or concept from its individual parts to the complete whole. Your audience is a blind or low-vision student who may not have seen the object or diagram before.
 
 Begin by describing the smallest or most specific parts. Then explain how these parts connect, relate, or combine into larger structures. Finish by describing the complete object, system, or concept that these parts form. Include spatial or process relationships where appropriate.
 
@@ -25,7 +25,9 @@ Use only information contained in the data. Do not invent missing facts.
     x_list = []
     y_list = []
 
-    for index in range(len(dataset)):
+    n = limit if limit is not None else len(dataset)
+
+    for index in range(n):
         caption = dataset.get_caption(index)
         entity_dict = text_to_entity(caption)
         entity_str = flatten_entity_relationship(entity_dict)
@@ -62,5 +64,4 @@ Use only information contained in the data. Do not invent missing facts.
 
 if __name__ == "__main__":
     dataset = AI2DDataset()
-    small_dataset = dataset[:10]
-    train_dataset = entity_to_ptw(small_dataset)
+    train_dataset = entity_to_ptw(dataset, limit = 5000)

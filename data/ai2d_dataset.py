@@ -127,4 +127,3 @@ class AI2DDataset(Dataset):
             repo_type="dataset",
             filename=f"ai2d_images/{image_name}",
             cache_dir=self.cache_dir
-        )
