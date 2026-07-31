@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Biological Diagram Caption Generator</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>Biological Diagram Captioner</h1>
+            <p>Upload a scientific diagram to generate detailed part-to-whole educational descriptions.</p>
+        </header>
+
+        <main>
+            <section class="upload-section">
+                <div class="drop-zone" id="dropZone">
+                    <div class="drop-zone-content">
+                        <svg class="upload-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                            <polyline points="17 8 12 3 7 8"></polyline>
+                            <line x1="12" y1="3" x2="12" y2="15"></line>
+                        </svg>
+                        <p class="drop-text">Drag & drop your diagram here or <span>browse</span></p>
+                        <p class="file-hint">Supports PNG, JPG, JPEG</p>
+                    </div>
+                    <input type="file" id="fileInput" accept="image/*" hidden>
+                </div>
+            </section>
+
+            <section class="preview-section hidden" id="previewSection">
+                <div class="image-preview-card">
+                    <img id="imagePreview" src="" alt="Uploaded Diagram Preview">
+                </div>
+                <button id="generateBtn" class="btn primary-btn">Generate Caption</button>
+            </section>
+
+            <div id="loading" class="loading-state hidden">
+                <div class="spinner"></div>
+                <p>Analyzing diagram and generating description...</p>
+            </div>
+
+            <section class="output-section hidden" id="outputSection">
+                <h2>Generated Caption</h2>
+                <div class="caption-card">
+                    <p id="captionText"></p>
+                </div>
+                <button id="resetBtn" class="btn secondary-btn">Upload Another Diagram</button>
+            </section>
+        </main>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>
