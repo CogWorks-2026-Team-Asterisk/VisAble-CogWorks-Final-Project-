@@ -1,4 +1,3 @@
-"""flask server for the visable page"""
 
 import io
 import os
@@ -21,7 +20,7 @@ BASE_BLIP_MODEL = "Salesforce/blip-image-captioning-base"
 HUB_MODEL = os.environ.get("VISABLE_MODEL", "hkondle/VisAble-Diagram-Captioner")
 LOCAL_MODEL_DIR = os.path.join(PROJECT_ROOT, "vision", "diagram_blip_model")
 
-# penalties make it hallucinate
+
 MAX_LENGTH = int(os.environ.get("VISABLE_MAX_LENGTH", "256"))
 NUM_BEAMS = int(os.environ.get("VISABLE_NUM_BEAMS", "4"))
 MIN_LENGTH = int(os.environ.get("VISABLE_MIN_LENGTH", "0"))
@@ -29,7 +28,7 @@ LENGTH_PENALTY = float(os.environ.get("VISABLE_LENGTH_PENALTY", "1.0"))
 REPETITION_PENALTY = float(os.environ.get("VISABLE_REPETITION_PENALTY", "1.0"))
 NO_REPEAT_NGRAM = int(os.environ.get("VISABLE_NO_REPEAT_NGRAM", "0"))
 
-# keep one sentence minimum
+
 MIN_CLIPPED_CHARS = 80
 
 app = Flask(__name__, static_folder=None)
@@ -45,10 +44,10 @@ def tidy(text):
     """fix tokenizer spacing"""
     text = re.sub(r"\s+", " ", text).strip()
 
-    # contractions
+    
     text = re.sub(r"\s*'\s*(?=(?:s|t|d|m|ll|re|ve)\b)", "'", text)
 
-    # plural possessives
+    
     text = re.sub(r"\s+'", "'", text)
 
     text = re.sub(r"\s*-\s*", "-", text)
@@ -63,7 +62,7 @@ def tidy(text):
 
 
 def clip_to_last_sentence(text):
-    """end on a period"""
+    
     if text.endswith((".", "!", "?")):
         return text
 
@@ -85,7 +84,7 @@ def get_device():
 
 
 def resolve_model_source():
-    """prefer a local folder"""
+    
     if os.path.isdir(LOCAL_MODEL_DIR):
         return LOCAL_MODEL_DIR
 
@@ -93,7 +92,7 @@ def resolve_model_source():
 
 
 def untied_config(source):
-    """untie head from embeddings"""
+    
     config = BlipConfig.from_pretrained(source)
     config.tie_word_embeddings = False
     config.text_config.tie_word_embeddings = False
@@ -158,7 +157,7 @@ def describe_image(image):
     caption = clip_to_last_sentence(tidy(processor.decode(output_ids[0], skip_special_tokens=True)))
 
     if _model_source == BASE_BLIP_MODEL:
-        # base model needs rewriting
+        
         from data.modifying_data import generate_part_to_whole
 
         caption = tidy(generate_part_to_whole(caption))
