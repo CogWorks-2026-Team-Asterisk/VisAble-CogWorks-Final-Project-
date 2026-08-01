@@ -6,6 +6,9 @@ from huggingface_hub import hf_hub_download
 from PIL import Image
 from torch.utils.data import Dataset
 
+CAPTION_FILE = "ai2d_caption_gpt4v.json"
+IMAGE_FOLDER = "ai2d_images"
+
 
 class AI2DDataset(Dataset):
 
@@ -13,24 +16,49 @@ class AI2DDataset(Dataset):
         self,
         repo_id="abhayzala/AI2D-Caption",
         cache_dir=None,
-        transform=None
+        transform=None,
+        snapshot_dir=None
     ):
         self.repo_id = repo_id
-        self.cache_dir = cache_dir
+        self.cache_dir = cache_dir or os.environ.get("AI2D_CACHE_DIR")
         self.transform = transform
+        self.snapshot_dir = snapshot_dir or os.environ.get("AI2D_SNAPSHOT_DIR")
 
-        json_path = hf_hub_download(
-            repo_id=self.repo_id,
-            repo_type="dataset",
-            filename="ai2d_caption_gpt4v.json",
-            cache_dir=self.cache_dir
-        )
+        if self.snapshot_dir and not os.path.isdir(self.snapshot_dir):
+            raise FileNotFoundError(
+                f"snapshot_dir {self.snapshot_dir} does not exist."
+            )
+
+        json_path = self._resolve(CAPTION_FILE)
 
         with open(json_path, "r", encoding="utf-8") as f:
             self.records = json.load(f)
 
         if not isinstance(self.records, list):
             raise ValueError("The dataset JSON must contain a list.")
+
+    def _resolve(self, filename):
+        """Return a local path for a file in the dataset repo.
+
+        When snapshot_dir is set the file is read straight off disk, which
+        avoids one network round trip per image.
+        """
+        if self.snapshot_dir:
+            local_path = os.path.join(self.snapshot_dir, filename)
+
+            if not os.path.exists(local_path):
+                raise FileNotFoundError(
+                    f"{filename} is missing from snapshot {self.snapshot_dir}."
+                )
+
+            return local_path
+
+        return hf_hub_download(
+            repo_id=self.repo_id,
+            repo_type="dataset",
+            filename=filename,
+            cache_dir=self.cache_dir
+        )
 
     def __len__(self):
         return len(self.records)
@@ -76,7 +104,7 @@ class AI2DDataset(Dataset):
             image = self.transform(image)
 
         return image
-    
+
     def get_image_path(self, index):
         return self.download_image(index)
 
@@ -125,8 +153,4 @@ class AI2DDataset(Dataset):
     def download_image(self, index):
         image_name = self.get_image_name(index)
 
-        return hf_hub_download(
-            repo_id=self.repo_id,
-            repo_type="dataset",
-            filename=f"ai2d_images/{image_name}",
-            cache_dir=self.cache_dir)
+        return self._resolve(f"{IMAGE_FOLDER}/{image_name}")

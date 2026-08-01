@@ -1,11 +1,28 @@
 import os
+import sys
 import time
 import json
-from openai import OpenAI
-from .text_to_entity import text_to_entity
+
+PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+if PROJECT_ROOT not in sys.path:
+    sys.path.insert(0, PROJECT_ROOT)
+
+from language.text_to_entity import text_to_entity
 from data.ai2d_dataset import AI2DDataset
 
-client = OpenAI(api_key=os.environ["OPENAI_API_KEY"])
+client = None
+
+
+def get_openai_client():
+    global client
+    if client is None:
+        from openai import OpenAI
+
+        api_key = os.environ.get("OPENAI_API_KEY")
+        if not api_key:
+            raise EnvironmentError("OPENAI_API_KEY environment variable is required")
+        client = OpenAI(api_key=api_key)
+    return client
 
 def flatten_entity_relationship(er_dict):
     entities_str = ", ".join(e["name"] for e in er_dict["entities"])
@@ -34,7 +51,7 @@ Use only information contained in the data. Do not invent missing facts.
         prompt = prompt_message + ' ' + entity_str
 
         try:
-            response = client.chat.completions.create(
+            response = get_openai_client().chat.completions.create(
                 model="gpt-4o-mini",
                 messages=[{"role": "user", "content": prompt}]
             )

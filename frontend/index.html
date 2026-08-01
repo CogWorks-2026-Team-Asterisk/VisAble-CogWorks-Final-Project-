@@ -1,56 +1,88 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Biological Diagram Caption Generator</title>
-    <link rel="stylesheet" href="style.css">
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>VisAble</title>
+<link rel="stylesheet" href="style.css">
 </head>
 <body>
-    <div class="container">
-        <header>
-            <h1>Biological Diagram Captioner</h1>
-            <p>Upload a scientific diagram to generate detailed part-to-whole educational descriptions.</p>
-        </header>
 
-        <main>
-            <section class="upload-section">
-                <div class="drop-zone" id="dropZone">
-                    <div class="drop-zone-content">
-                        <svg class="upload-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
-                            <polyline points="17 8 12 3 7 8"></polyline>
-                            <line x1="12" y1="3" x2="12" y2="15"></line>
-                        </svg>
-                        <p class="drop-text">Drag & drop your diagram here or <span>browse</span></p>
-                        <p class="file-hint">Supports PNG, JPG, JPEG</p>
-                    </div>
-                    <input type="file" id="fileInput" accept="image/*" hidden>
-                </div>
-            </section>
+<header class="topbar">
+    <span class="logo">Vis<span class="logo__accent">Able</span></span>
+</header>
 
-            <section class="preview-section hidden" id="previewSection">
-                <div class="image-preview-card">
-                    <img id="imagePreview" src="" alt="Uploaded Diagram Preview">
-                </div>
-                <button id="generateBtn" class="btn primary-btn">Generate Caption</button>
-            </section>
+<main class="page">
 
-            <div id="loading" class="loading-state hidden">
-                <div class="spinner"></div>
-                <p>Analyzing diagram and generating description...</p>
-            </div>
+    <section class="intro">
+        <h1>Describe a diagram</h1>
+        <p>Upload an image or use your camera, and VisAble writes a part-to-whole description.</p>
+    </section>
 
-            <section class="output-section hidden" id="outputSection">
-                <h2>Generated Caption</h2>
-                <div class="caption-card">
-                    <p id="captionText"></p>
-                </div>
-                <button id="resetBtn" class="btn secondary-btn">Upload Another Diagram</button>
-            </section>
-        </main>
+    <div class="modes">
+        <button class="mode-btn is-active" id="uploadModeBtn">Upload image</button>
+        <button class="mode-btn" id="cameraModeBtn">Use camera</button>
     </div>
 
-    <script src="app.js"></script>
+    <!-- upload -->
+    <section class="panel" id="uploadPanel">
+        <div class="dropzone" id="dropZone" tabindex="0" role="button"
+             aria-label="Drag an image here or press Enter to browse for a file">
+            <svg class="dropzone__icon" viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                <path d="M17 8l-5-5-5 5M12 3v12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+            <p class="dropzone__text">Drag and drop an image here</p>
+            <p class="dropzone__hint">or <span>browse your files</span> &middot; PNG or JPG</p>
+            <input type="file" id="fileInput" accept="image/*" hidden>
+        </div>
+    </section>
+
+    <!-- camera -->
+    <section class="panel hidden" id="cameraPanel">
+        <div class="camera-box">
+            <video id="video" playsinline autoplay muted></video>
+        </div>
+        <p class="error hidden" id="cameraError" role="alert"></p>
+        <div class="actions">
+            <button class="btn btn--navy" id="captureBtn">Capture photo</button>
+        </div>
+        <canvas id="canvas" hidden></canvas>
+    </section>
+
+    <!-- selected image -->
+    <section class="panel hidden" id="previewPanel">
+        <figure class="frame">
+            <img id="previewImage" alt="The image you selected">
+        </figure>
+        <div class="actions">
+            <button class="btn btn--navy" id="submitBtn">Submit</button>
+            <button class="btn btn--grey" id="clearBtn">Choose another</button>
+        </div>
+    </section>
+
+    <!-- result -->
+    <section class="panel hidden" id="resultPanel">
+        <h2 class="panel__title">Description</h2>
+        <div class="result" id="resultText" aria-live="polite" tabindex="0"></div>
+        <div class="actions">
+            <button class="btn btn--navy" id="audioBtn">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5l11 7-11 7z" fill="currentColor"/></svg>
+                Convert text to audio
+            </button>
+            <button class="btn btn--grey hidden" id="stopAudioBtn">Stop</button>
+        </div>
+        <p class="note hidden" id="audioNote"></p>
+        <audio id="player" hidden></audio>
+    </section>
+
+    <div class="loading hidden" id="loading" role="status" aria-live="polite">
+        <span class="spinner"></span>
+        <span id="loadingText">Generating description…</span>
+    </div>
+
+</main>
+
+<script src="app.js"></script>
 </body>
 </html>

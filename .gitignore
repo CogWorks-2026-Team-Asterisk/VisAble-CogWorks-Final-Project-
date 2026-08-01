@@ -1,6 +1,10 @@
 .venv/
+.env
+output.mp3
 
 t5-part-to-whole-final/
 *.safetensors
 .DS_Store
 __pycache__/
+visable_code.zip
+data/ptw_dataset.json

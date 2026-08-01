@@ -8,9 +8,9 @@ from transformers import (
     Trainer,
     TrainingArguments,
 )
-#I'm running this on collab, I just put it here
+# I'm running this on Colab; kept here for reference.
 
-DATA_PATH = "train_dataset_partial.json"
+DATA_PATH = "training_data.json"
 
 print("Loading training data...")
 with open(DATA_PATH, "r") as f:
@@ -25,67 +25,75 @@ print(f"Train size: {len(train_data)}, Validation size: {len(val_data)}")
 tokenizer = T5Tokenizer.from_pretrained("t5-base")
 model = T5ForConditionalGeneration.from_pretrained("t5-base")
 
+
 class PartToWholeDataset(Dataset):
-    def __init__(self, data, tokenizer, max_input_len = 512, max_target_len = 512):
+    def __init__(self, data, tokenizer, max_input_len=512, max_target_len=512):
         self.data = data
         self.tokenizer = tokenizer
-        self.max_input_len = 512
-        self.max_target_len = 512
-    
+        self.max_input_len = max_input_len
+        self.max_target_len = max_target_len
+
     def __len__(self):
         return len(self.data)
-    
+
     def __getitem__(self, idx):
-            
         item = self.data[idx]
-        input_text = item["input"]   
+        input_text = item["input"]
         target_text = item["output"]
-        
 
         input_enc = self.tokenizer(
             input_text,
             max_length=self.max_input_len,
             padding="max_length",
             truncation=True,
-            return_tensors="pt"   # return as PyTorch tensors
+            return_tensors="pt",
         )
 
-        # Tokenize the target (y)
         target_enc = self.tokenizer(
             target_text,
             max_length=self.max_target_len,
             padding="max_length",
             truncation=True,
-            return_tensors="pt"
+            return_tensors="pt",
         )
 
         labels = target_enc["input_ids"].squeeze()
-
         labels[labels == self.tokenizer.pad_token_id] = -100
 
         return {
             "input_ids": input_enc["input_ids"].squeeze(),
             "attention_mask": input_enc["attention_mask"].squeeze(),
-            "labels": labels
+            "labels": labels,
         }
+
 
 train_dataset = PartToWholeDataset(train_data, tokenizer)
 val_dataset = PartToWholeDataset(val_data, tokenizer)
 
 training_args = TrainingArguments(
-    epochs = 10, batch_size = 8, learning_rate = 3e-4,
-    eval_strategy = "epoch",
-    save_strategy = "epoch",
-    fp16 = torch.cuda.is_available()
+    output_dir="./results",
+    num_train_epochs=10,
+    per_device_train_batch_size=8,
+    learning_rate=3e-4,
+    eval_strategy="epoch",
+    save_strategy="epoch",
+    fp16=torch.cuda.is_available(),
 )
 
-trainer = Trainer(model, training_args, train_dataset, val_dataset)
+data_collator = DataCollatorForSeq2Seq(tokenizer=tokenizer, model=model)
+
+trainer = Trainer(
+    model=model,
+    args=training_args,
+    train_dataset=train_dataset,
+    eval_dataset=val_dataset,
+    data_collator=data_collator,
+)
 trainer.train()
 
 model.save_pretrained("t5-part-to-whole-final")
 tokenizer.save_pretrained("t5-part-to-whole-final")
 
 test_input = "describe part-to-whole: Entities: [...] Relations: [...]"
-output = model.generate(tokenizer(test_input))
-print(tokenizer.decode(output))
-
+output = model.generate(**tokenizer(test_input, return_tensors="pt"))
+print(tokenizer.decode(output[0], skip_special_tokens=True))
